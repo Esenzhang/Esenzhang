@@ -1,0 +1,19 @@
+{
+  "target_url": "https://example.com",
+  "source_site": "https://google.com",
+  "window_count": 5,
+  "click_interval": 3,
+  "proxy_path": "sample_proxies.txt",
+  "ua_path": "sample_user_agents.txt",
+  "headless": false,
+  "auto_rotate": true,
+  "random_delay": true,
+  "advanced_settings": {
+    "max_retry": 3,
+    "timeout": 30,
+    "min_delay": 2,
+    "max_delay": 8,
+    "proxy_check_interval": 60,
+    "ua_rotation_interval": 300
+  }
+}

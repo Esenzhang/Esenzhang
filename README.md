@@ -1,54 +1,206 @@
-<header>
+# 动态IP轮换点击广告联盟网站链接脚本程序
 
-<!--
-  <<< Author notes: Course header >>>
-  Include a 1280×640 image, course title in sentence case, and a concise description in emphasis.
-  In your repository settings: enable template repository, add your 1280×640 social image, auto delete head branches.
-  Add your open source license, GitHub uses MIT license.
--->
+一个基于Python的智能广告点击脚本，支持指纹浏览器、动态IP轮换、多窗口管理等高级功能。
 
-# GitHub Pages
+## 🚀 主要特性
 
-_Create a site or blog from your GitHub repositories with GitHub Pages._
+- **指纹浏览器**: 使用undetected-chromedriver，有效规避反爬虫检测
+- **动态IP轮换**: 支持自定义代理列表，自动轮换IP地址
+- **多窗口管理**: 可配置同时开启的浏览器窗口数量
+- **可视化界面**: 基于PyQt6的现代化GUI界面
+- **实时监控**: 显示成功率、系统资源使用等实时数据
+- **配置管理**: 支持保存/加载配置文件
+- **日志系统**: 完整的运行日志记录和导出功能
 
-</header>
+## 📋 系统要求
 
-<!--
-  <<< Author notes: Step 1 >>>
-  Choose 3-5 steps for your course.
-  The first step is always the hardest, so pick something easy!
-  Link to docs.github.com for further explanations.
-  Encourage users to open new tabs for steps!
--->
+- **操作系统**: Windows 10+, macOS 10.14+, Ubuntu 18.04+
+- **Python版本**: Python 3.8+
+- **内存**: 最低4GB，推荐8GB+
+- **存储**: 至少500MB可用空间
+- **网络**: 稳定的网络连接
 
-## Step 1: Enable GitHub Pages
+## 🛠️ 安装步骤
 
-_Welcome to GitHub Pages and Jekyll :tada:!_
+### 1. 安装Python环境
 
-The first step is to enable GitHub Pages on this [repository](https://docs.github.com/en/get-started/quickstart/github-glossary#repository). When you enable GitHub Pages on a repository, GitHub takes the content that's on the main branch and publishes a website based on its contents.
+#### Windows
+1. 访问 [Python官网](https://www.python.org/downloads/) 下载最新版本
+2. 运行安装程序，**务必勾选"Add Python to PATH"**
+3. 验证安装: 打开命令提示符，输入 `python --version`
 
-### :keyboard: Activity: Enable GitHub Pages
+#### macOS
+```bash
+# 使用Homebrew安装
+brew install python3
 
-1. Open a new browser tab, and work on the steps in your second tab while you read the instructions in this tab.
-1. Under your repository name, click **Settings**.
-1. Click **Pages** in the **Code and automation** section.
-1. Ensure "Deploy from a branch" is selected from the **Source** drop-down menu, and then select `main` from the **Branch** drop-down menu.
-1. Click the **Save** button.
-1. Wait about _one minute_ then refresh this page (the one you're following instructions from). [GitHub Actions](https://docs.github.com/en/actions) will automatically update to the next step.
-   > Turning on GitHub Pages creates a deployment of your repository. GitHub Actions may take up to a minute to respond while waiting for the deployment. Future steps will be about 20 seconds; this step is slower.
-   > **Note**: In the **Pages** of **Settings**, the **Visit site** button will appear at the top. Click the button to see your GitHub Pages site.
+# 或从官网下载安装包
+```
 
-<footer>
+#### Linux (Ubuntu/Debian)
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv
+```
 
-<!--
-  <<< Author notes: Footer >>>
-  Add a link to get support, GitHub status page, code of conduct, license link.
--->
+### 2. 下载项目文件
 
----
+```bash
+# 克隆项目或下载ZIP文件
+git clone <项目地址>
+cd 动态IP轮换点击脚本
+```
 
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/github-pages) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+### 3. 安装依赖包
 
-&copy; 2023 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+```bash
+# 使用pip安装依赖
+pip install -r requirements.txt
 
-</footer>
+# 如果遇到权限问题，使用
+pip install --user -r requirements.txt
+```
+
+### 4. 配置Chrome浏览器
+
+确保系统已安装Chrome浏览器，程序会自动下载匹配的ChromeDriver。
+
+## 🚀 使用方法
+
+### 快速启动
+
+#### Windows
+双击 `start.bat` 文件即可启动程序
+
+#### Linux/macOS
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+### 手动启动
+```bash
+python main.py
+```
+
+## 📖 使用指南
+
+### 1. 主控制界面
+
+- **目标网站配置**: 输入要点击的目标网站URL和来源网站
+- **运行参数**: 设置同时开启的窗口数量和点击间隔
+- **控制按钮**: 开始/停止运行，清空日志
+- **实时状态**: 显示运行状态、CPU/内存使用率、网络连接数
+
+### 2. 配置管理
+
+- **代理配置**: 选择包含代理IP列表的文本文件
+- **用户代理配置**: 选择包含浏览器UA列表的文本文件
+- **高级配置**: 无头模式、自动轮换IP、随机延迟等选项
+
+### 3. 运行日志
+
+- 实时显示程序运行状态
+- 支持日志导出和清空
+- 记录详细的点击操作信息
+
+### 4. 成功率统计
+
+- 显示总点击次数、成功次数、失败次数
+- 可视化成功率进度条
+- 详细的统计表格
+
+## ⚙️ 配置文件说明
+
+### 代理文件格式
+```
+127.0.0.1:8080
+127.0.0.1:8081
+127.0.0.1:8082
+```
+
+### 用户代理文件格式
+```
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...
+Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101...
+```
+
+### 配置文件格式 (JSON)
+```json
+{
+  "target_url": "https://example.com",
+  "source_site": "https://google.com",
+  "window_count": 5,
+  "click_interval": 3,
+  "proxy_path": "proxies.txt",
+  "ua_path": "user_agents.txt"
+}
+```
+
+## 🔧 高级配置
+
+### 指纹浏览器设置
+- 自动隐藏WebDriver标识
+- 随机化浏览器指纹
+- 支持无头模式运行
+
+### IP轮换策略
+- 按时间间隔自动轮换
+- 随机选择代理IP
+- 支持代理可用性检测
+
+### 点击行为模拟
+- 随机延迟时间
+- 模拟真实用户行为
+- 智能识别广告链接
+
+## 📊 性能优化建议
+
+1. **代理质量**: 使用高质量、稳定的代理IP
+2. **窗口数量**: 根据系统性能调整，建议不超过20个
+3. **点击间隔**: 设置合理的间隔时间，避免过于频繁
+4. **系统资源**: 监控CPU和内存使用率，适时调整参数
+
+## 🚨 注意事项
+
+1. **合法使用**: 请确保在合法范围内使用本程序
+2. **网站政策**: 遵守目标网站的使用条款和robots.txt
+3. **代理合规**: 确保使用的代理IP来源合法
+4. **系统安全**: 定期更新系统和依赖包
+
+## 🐛 常见问题
+
+### Q: 程序启动失败
+A: 检查Python版本、依赖包安装、Chrome浏览器安装
+
+### Q: 无法创建浏览器窗口
+A: 检查Chrome版本、ChromeDriver版本、系统权限
+
+### Q: 代理连接失败
+A: 验证代理IP可用性、网络连接、防火墙设置
+
+### Q: 点击成功率低
+A: 检查目标网站结构、代理质量、点击间隔设置
+
+## 📝 更新日志
+
+### v1.0.0 (2024-01-01)
+- 初始版本发布
+- 基础功能实现
+- GUI界面完成
+
+## 🤝 技术支持
+
+如遇到问题，请：
+1. 查看日志文件获取详细错误信息
+2. 检查系统环境和依赖包版本
+3. 参考常见问题解决方案
+4. 提交Issue描述具体问题
+
+## 📄 许可证
+
+本项目采用MIT许可证，详见LICENSE文件。
+
+## ⚠️ 免责声明
+
+本程序仅供学习和研究使用，使用者需自行承担使用风险，开发者不承担任何法律责任。
