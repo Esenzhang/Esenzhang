@@ -3,6 +3,7 @@
 """
 动态IP轮换点击广告联盟网站链接脚本程序
 支持指纹浏览器、动态IP轮换、多窗口管理
+整合GUI示例图片的所有功能
 """
 
 import sys
@@ -15,9 +16,11 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QGridLayout, QLabel, QLineEdit, 
                              QTextEdit, QPushButton, QSpinBox, QComboBox, 
                              QProgressBar, QTabWidget, QGroupBox, QCheckBox,
-                             QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem)
-from PyQt6.QtCore import QThread, pyqtSignal, QTimer, Qt
-from PyQt6.QtGui import QFont, QIcon, QPixmap
+                             QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem,
+                             QRadioButton, QButtonGroup, QSplitter, QListWidget,
+                             QListWidgetItem, QFrame, QScrollArea)
+from PyQt6.QtCore import QThread, pyqtSignal, QTimer, Qt, QSize
+from PyQt6.QtGui import QFont, QIcon, QPixmap, QPalette, QColor
 import undetected_chromedriver as uc
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -57,7 +60,7 @@ class BrowserManager:
             print(f"加载UA文件失败: {e}")
             return 0
     
-    def create_driver(self, proxy=None, user_agent=None):
+    def create_driver(self, proxy=None, user_agent=None, headless=False):
         """创建浏览器驱动"""
         try:
             options = Options()
@@ -76,6 +79,10 @@ class BrowserManager:
             options.add_argument('--disable-blink-features=AutomationControlled')
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option('useAutomationExtension', False)
+            
+            # 无头模式
+            if headless:
+                options.add_argument('--headless')
             
             # 创建驱动
             driver = uc.Chrome(options=options)
@@ -102,16 +109,26 @@ class ClickWorker(QThread):
     log_updated = pyqtSignal(str)
     success_count_updated = pyqtSignal(int)
     failure_count_updated = pyqtSignal(int)
+    stats_updated = pyqtSignal(dict)
     
-    def __init__(self, target_url, proxy_list, user_agents, window_count):
+    def __init__(self, target_url, proxy_list, user_agents, window_count, 
+                 task_type, ad_platform, source_site, click_interval, 
+                 is_real_person, undertake_platform):
         super().__init__()
         self.target_url = target_url
         self.proxy_list = proxy_list
         self.user_agents = user_agents
         self.window_count = window_count
+        self.task_type = task_type
+        self.ad_platform = ad_platform
+        self.source_site = source_site
+        self.click_interval = click_interval
+        self.is_real_person = is_real_person
+        self.undertake_platform = undertake_platform
         self.is_running = False
         self.success_count = 0
         self.failure_count = 0
+        self.stats_data = []
         
     def run(self):
         """运行点击任务"""
@@ -196,9 +213,10 @@ class ClickWorker(QThread):
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
             
-            # 随机等待时间
-            wait_time = random.uniform(3, 8)
-            time.sleep(wait_time)
+            # 随机等待时间（模拟真实用户行为）
+            if self.is_real_person:
+                wait_time = random.uniform(3, 8)
+                time.sleep(wait_time)
             
             # 查找并点击广告链接
             ad_links = driver.find_elements(By.TAG_NAME, "a")
@@ -216,6 +234,16 @@ class ClickWorker(QThread):
                         clicked = True
                         self.success_count += 1
                         self.success_count_updated.emit(self.success_count)
+                        
+                        # 记录统计信息
+                        stats = {
+                            'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            'window_id': window_id,
+                            'status': '成功',
+                            'details': f'点击链接: {href}'
+                        }
+                        self.stats_data.append(stats)
+                        self.stats_updated.emit(stats)
                         break
                 except:
                     continue
@@ -224,6 +252,16 @@ class ClickWorker(QThread):
                 self.log_updated.emit(f"窗口 {window_id} 未找到可点击的广告链接")
                 self.failure_count += 1
                 self.failure_count_updated.emit(self.failure_count)
+                
+                # 记录失败统计
+                stats = {
+                    'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'window_id': window_id,
+                    'status': '失败',
+                    'details': '未找到可点击的广告链接'
+                }
+                self.stats_data.append(stats)
+                self.stats_updated.emit(stats)
             
             # 保持窗口打开一段时间
             time.sleep(random.uniform(5, 15))
@@ -232,6 +270,16 @@ class ClickWorker(QThread):
             self.log_updated.emit(f"窗口 {window_id} 执行失败: {e}")
             self.failure_count += 1
             self.failure_count_updated.emit(self.failure_count)
+            
+            # 记录错误统计
+            stats = {
+                'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'window_id': window_id,
+                'status': '错误',
+                'details': str(e)
+            }
+            self.stats_data.append(stats)
+            self.stats_updated.emit(stats)
     
     def stop(self):
         """停止任务"""
@@ -249,34 +297,23 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """初始化用户界面"""
         self.setWindowTitle("动态IP轮换点击广告联盟网站链接脚本程序")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setGeometry(100, 100, 1400, 900)
         
         # 创建中央部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # 创建标签页
-        tab_widget = QTabWidget()
+        # 创建主布局
+        main_layout = QHBoxLayout()
         
-        # 主控制标签页
-        main_tab = self.create_main_tab()
-        tab_widget.addTab(main_tab, "主控制")
+        # 创建左侧配置面板
+        left_panel = self.create_left_panel()
+        main_layout.addWidget(left_panel, 1)
         
-        # 配置标签页
-        config_tab = self.create_config_tab()
-        tab_widget.addTab(config_tab, "配置管理")
+        # 创建右侧文件管理面板
+        right_panel = self.create_right_panel()
+        main_layout.addWidget(right_panel, 1)
         
-        # 日志标签页
-        log_tab = self.create_log_tab()
-        tab_widget.addTab(log_tab, "运行日志")
-        
-        # 统计标签页
-        stats_tab = self.create_stats_tab()
-        tab_widget.addTab(stats_tab, "成功率统计")
-        
-        # 主布局
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(tab_widget)
         central_widget.setLayout(main_layout)
         
         # 状态栏
@@ -287,304 +324,304 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.update_system_info)
         self.timer.start(5000)  # 每5秒更新一次
         
-    def create_main_tab(self):
-        """创建主控制标签页"""
-        widget = QWidget()
+    def create_left_panel(self):
+        """创建左侧配置面板"""
+        panel = QWidget()
         layout = QVBoxLayout()
         
-        # 目标网站配置
-        target_group = QGroupBox("目标网站配置")
-        target_layout = QGridLayout()
+        # 任务类型选择
+        task_group = QGroupBox("任务类型选择")
+        task_layout = QVBoxLayout()
         
-        target_layout.addWidget(QLabel("目标网站URL:"), 0, 0)
-        self.target_url_edit = QLineEdit()
-        self.target_url_edit.setPlaceholderText("请输入目标网站URL")
-        target_layout.addWidget(self.target_url_edit, 0, 1)
+        self.task_type_group = QButtonGroup()
+        task_types = ["Russia Trafbit", "Short Link", "Download", "Advertising Alliance"]
+        for task_type in task_types:
+            radio = QRadioButton(task_type)
+            self.task_type_group.addButton(radio)
+            task_layout.addWidget(radio)
+            if task_type == "Advertising Alliance":
+                radio.setChecked(True)
         
-        target_layout.addWidget(QLabel("来源网站:"), 1, 0)
-        self.source_site_edit = QLineEdit()
-        self.source_site_edit.setPlaceholderText("请输入来源网站")
-        target_layout.addWidget(self.source_site_edit, 1, 1)
+        task_group.setLayout(task_layout)
+        layout.addWidget(task_group)
         
-        target_group.setLayout(target_layout)
-        layout.addWidget(target_group)
+        # 广告平台选择
+        platform_group = QGroupBox("广告平台选择")
+        platform_layout = QVBoxLayout()
         
-        # 运行参数配置
-        run_group = QGroupBox("运行参数配置")
-        run_layout = QGridLayout()
+        self.platform_group = QButtonGroup()
+        platforms = ["Google Adsense", "PopCash"]
+        for platform in platforms:
+            radio = QRadioButton(platform)
+            self.platform_group.addButton(radio)
+            platform_layout.addWidget(radio)
+            if platform == "PopCash":
+                radio.setChecked(True)
         
-        run_layout.addWidget(QLabel("窗口数量:"), 0, 0)
+        platform_group.setLayout(platform_layout)
+        layout.addWidget(platform_group)
+        
+        # 页面URL配置
+        url_group = QGroupBox("页面URL配置")
+        url_layout = QGridLayout()
+        
+        url_layout.addWidget(QLabel("Page Url:"), 0, 0)
+        self.page_url_edit = QLineEdit()
+        self.page_url_edit.setPlaceholderText("请输入目标网站URL")
+        url_layout.addWidget(self.page_url_edit, 0, 1)
+        
+        self.page_url_browse_btn = QPushButton("编辑")
+        self.page_url_browse_btn.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView))
+        self.page_url_browse_btn.clicked.connect(self.browse_page_url)
+        url_layout.addWidget(self.page_url_browse_btn, 0, 2)
+        
+        url_group.setLayout(url_layout)
+        layout.addWidget(url_group)
+        
+        # 流量来源配置
+        source_group = QGroupBox("流量来源配置")
+        source_layout = QGridLayout()
+        
+        source_layout.addWidget(QLabel("Traffic Source:"), 0, 0)
+        self.traffic_source_edit = QLineEdit()
+        self.traffic_source_edit.setPlaceholderText("请输入流量来源")
+        source_layout.addWidget(self.traffic_source_edit, 0, 1)
+        
+        self.traffic_source_browse_btn = QPushButton("编辑")
+        self.traffic_source_browse_btn.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView))
+        self.traffic_source_browse_btn.clicked.connect(self.browse_traffic_source)
+        source_layout.addWidget(self.traffic_source_browse_btn, 0, 2)
+        
+        source_group.setLayout(source_layout)
+        layout.addWidget(source_group)
+        
+        # 窗口数量配置
+        window_group = QGroupBox("窗口数量配置")
+        window_layout = QGridLayout()
+        
+        window_layout.addWidget(QLabel("Thread Number (窗口数量):"), 0, 0)
         self.window_count_spin = QSpinBox()
         self.window_count_spin.setRange(1, 50)
-        self.window_count_spin.setValue(5)
-        run_layout.addWidget(self.window_count_spin, 0, 1)
+        self.window_count_spin.setValue(4)
+        window_layout.addWidget(self.window_count_spin, 0, 1)
         
-        run_layout.addWidget(QLabel("点击间隔(秒):"), 0, 2)
-        self.click_interval_spin = QSpinBox()
-        self.click_interval_spin.setRange(1, 60)
-        self.click_interval_spin.setValue(3)
-        run_layout.addWidget(self.click_interval_spin, 0, 3)
+        window_group.setLayout(window_layout)
+        layout.addWidget(window_group)
         
-        run_group.setLayout(run_layout)
-        layout.addWidget(run_group)
+        # 承接平台配置
+        undertake_group = QGroupBox("承接平台配置")
+        undertake_layout = QGridLayout()
         
-        # 控制按钮
-        control_layout = QHBoxLayout()
+        undertake_layout.addWidget(QLabel("Undertake Platform:"), 0, 0)
+        self.undertake_combo = QComboBox()
+        self.undertake_combo.addItems(["direct", "proxy", "vpn"])
+        undertake_layout.addWidget(self.undertake_combo, 0, 1)
         
-        self.start_btn = QPushButton("开始运行")
-        self.start_btn.clicked.connect(self.start_clicking)
-        self.start_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-size: 14px; padding: 10px; }")
-        control_layout.addWidget(self.start_btn)
+        undertake_group.setLayout(undertake_layout)
+        layout.addWidget(undertake_group)
         
-        self.stop_btn = QPushButton("停止运行")
-        self.stop_btn.clicked.connect(self.stop_clicking)
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; font-size: 14px; padding: 10px; }")
-        control_layout.addWidget(self.stop_btn)
+        # 真实人模拟配置
+        person_group = QGroupBox("真实人模拟配置")
+        person_layout = QGridLayout()
         
-        self.clear_btn = QPushButton("清空日志")
-        self.clear_btn.clicked.connect(self.clear_logs)
-        self.clear_btn.setStyleSheet("QPushButton { background-color: #2196F3; color: white; font-size: 14px; padding: 10px; }")
-        control_layout.addWidget(self.clear_btn)
+        person_layout.addWidget(QLabel("Is Real Person Simulation:"), 0, 0)
+        self.real_person_combo = QComboBox()
+        self.real_person_combo.addItems(["Yes", "No"])
+        person_layout.addWidget(self.real_person_combo, 0, 1)
         
-        layout.addLayout(control_layout)
+        person_group.setLayout(person_layout)
+        layout.addWidget(person_group)
         
-        # 实时状态显示
-        status_group = QGroupBox("实时状态")
-        status_layout = QGridLayout()
+        # 运行控制按钮
+        control_group = QGroupBox("运行控制")
+        control_layout = QVBoxLayout()
         
-        status_layout.addWidget(QLabel("运行状态:"), 0, 0)
-        self.status_label = QLabel("未运行")
-        self.status_label.setStyleSheet("color: red; font-weight: bold;")
-        status_layout.addWidget(self.status_label, 0, 1)
-        
-        status_layout.addWidget(QLabel("CPU使用率:"), 0, 2)
-        self.cpu_label = QLabel("0%")
-        status_layout.addWidget(self.cpu_label, 0, 3)
-        
-        status_layout.addWidget(QLabel("内存使用率:"), 1, 0)
-        self.memory_label = QLabel("0%")
-        status_layout.addWidget(self.memory_label, 1, 1)
-        
-        status_layout.addWidget(QLabel("网络连接数:"), 1, 2)
-        self.network_label = QLabel("0")
-        status_layout.addWidget(self.network_label, 1, 3)
-        
-        status_group.setLayout(status_layout)
-        layout.addWidget(status_group)
-        
-        widget.setLayout(layout)
-        return widget
-    
-    def create_config_tab(self):
-        """创建配置管理标签页"""
-        widget = QWidget()
-        layout = QVBoxLayout()
-        
-        # 代理配置
-        proxy_group = QGroupBox("代理配置")
-        proxy_layout = QGridLayout()
-        
-        proxy_layout.addWidget(QLabel("代理文件路径:"), 0, 0)
-        self.proxy_path_edit = QLineEdit()
-        self.proxy_path_edit.setPlaceholderText("请选择代理文件")
-        proxy_layout.addWidget(self.proxy_path_edit, 0, 1)
-        
-        self.proxy_browse_btn = QPushButton("浏览")
-        self.proxy_browse_btn.clicked.connect(self.browse_proxy_file)
-        proxy_layout.addWidget(self.proxy_browse_btn, 0, 2)
-        
-        proxy_layout.addWidget(QLabel("代理数量:"), 1, 0)
-        self.proxy_count_label = QLabel("0")
-        proxy_layout.addWidget(self.proxy_count_label, 1, 1)
-        
-        proxy_group.setLayout(proxy_layout)
-        layout.addWidget(proxy_group)
-        
-        # UA配置
-        ua_group = QGroupBox("用户代理配置")
-        ua_layout = QGridLayout()
-        
-        ua_layout.addWidget(QLabel("UA文件路径:"), 0, 0)
-        self.ua_path_edit = QLineEdit()
-        self.ua_path_edit.setPlaceholderText("请选择UA文件")
-        ua_layout.addWidget(self.ua_path_edit, 0, 1)
-        
-        self.ua_browse_btn = QPushButton("浏览")
-        self.ua_browse_btn.clicked.connect(self.browse_ua_file)
-        ua_layout.addWidget(self.ua_browse_btn, 0, 2)
-        
-        ua_layout.addWidget(QLabel("UA数量:"), 1, 0)
-        self.ua_count_label = QLabel("0")
-        ua_layout.addWidget(self.ua_count_label, 1, 1)
-        
-        ua_group.setLayout(ua_layout)
-        layout.addWidget(ua_group)
-        
-        # 高级配置
-        advanced_group = QGroupBox("高级配置")
-        advanced_layout = QGridLayout()
-        
-        self.headless_checkbox = QCheckBox("无头模式")
-        advanced_layout.addWidget(self.headless_checkbox, 0, 0)
-        
-        self.auto_rotate_checkbox = QCheckBox("自动轮换IP")
-        self.auto_rotate_checkbox.setChecked(True)
-        advanced_layout.addWidget(self.auto_rotate_checkbox, 0, 1)
-        
-        self.random_delay_checkbox = QCheckBox("随机延迟")
-        self.random_delay_checkbox.setChecked(True)
-        advanced_layout.addWidget(self.random_delay_checkbox, 0, 2)
-        
-        advanced_group.setLayout(advanced_layout)
-        layout.addWidget(advanced_group)
-        
-        # 配置操作按钮
-        config_btn_layout = QHBoxLayout()
-        
-        self.load_config_btn = QPushButton("加载配置")
-        self.load_config_btn.clicked.connect(self.load_config)
-        config_btn_layout.addWidget(self.load_config_btn)
-        
-        self.save_config_btn = QPushButton("保存配置")
-        self.save_config_btn.clicked.connect(self.save_config)
-        config_btn_layout.addWidget(self.save_config_btn)
-        
-        self.reset_config_btn = QPushButton("重置配置")
-        self.reset_config_btn.clicked.connect(self.reset_config)
-        config_btn_layout.addWidget(self.reset_config_btn)
-        
-        layout.addLayout(config_btn_layout)
-        
-        widget.setLayout(layout)
-        return widget
-    
-    def create_log_tab(self):
-        """创建运行日志标签页"""
-        widget = QWidget()
-        layout = QVBoxLayout()
-        
-        # 日志显示区域
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Consolas", 10))
-        layout.addWidget(self.log_text)
-        
-        # 日志控制按钮
-        log_btn_layout = QHBoxLayout()
-        
-        self.export_log_btn = QPushButton("导出日志")
-        self.export_log_btn.clicked.connect(self.export_log)
-        log_btn_layout.addWidget(self.export_log_btn)
-        
-        self.clear_log_btn = QPushButton("清空日志")
-        self.clear_log_btn.clicked.connect(self.clear_logs)
-        log_btn_layout.addWidget(self.clear_log_btn)
-        
-        layout.addLayout(log_btn_layout)
-        
-        widget.setLayout(layout)
-        return widget
-    
-    def create_stats_tab(self):
-        """创建成功率统计标签页"""
-        widget = QWidget()
-        layout = QVBoxLayout()
-        
-        # 统计信息显示
-        stats_group = QGroupBox("点击统计")
-        stats_layout = QGridLayout()
-        
-        stats_layout.addWidget(QLabel("总点击次数:"), 0, 0)
-        self.total_clicks_label = QLabel("0")
-        stats_layout.addWidget(self.total_clicks_label, 0, 1)
-        
-        stats_layout.addWidget(QLabel("成功次数:"), 0, 2)
-        self.success_clicks_label = QLabel("0")
-        self.success_clicks_label.setStyleSheet("color: green; font-weight: bold;")
-        stats_layout.addWidget(self.success_clicks_label, 0, 3)
-        
-        stats_layout.addWidget(QLabel("失败次数:"), 1, 0)
-        self.failure_clicks_label = QLabel("0")
-        self.failure_clicks_label.setStyleSheet("color: red; font-weight: bold;")
-        stats_layout.addWidget(self.failure_clicks_label, 1, 1)
-        
-        stats_layout.addWidget(QLabel("成功率:"), 1, 2)
-        self.success_rate_label = QLabel("0%")
-        self.success_rate_label.setStyleSheet("color: blue; font-weight: bold; font-size: 16px;")
-        stats_layout.addWidget(self.success_rate_label, 1, 3)
-        
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-        
-        # 成功率进度条
-        progress_group = QGroupBox("成功率可视化")
-        progress_layout = QVBoxLayout()
-        
-        self.success_progress = QProgressBar()
-        self.success_progress.setRange(0, 100)
-        self.success_progress.setValue(0)
-        self.success_progress.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid grey;
-                border-radius: 5px;
-                text-align: center;
-                font-weight: bold;
-            }
-            QProgressBar::chunk {
+        self.run_btn = QPushButton("Run")
+        self.run_btn.setStyleSheet("""
+            QPushButton {
                 background-color: #4CAF50;
-                border-radius: 3px;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 15px;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
             }
         """)
-        progress_layout.addWidget(self.success_progress)
+        self.run_btn.clicked.connect(self.start_clicking)
+        control_layout.addWidget(self.run_btn)
         
-        progress_group.setLayout(progress_layout)
-        layout.addWidget(progress_group)
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
         
-        # 详细统计表格
-        table_group = QGroupBox("详细统计")
-        table_layout = QVBoxLayout()
+        # 添加弹性空间
+        layout.addStretch()
         
-        self.stats_table = QTableWidget()
-        self.stats_table.setColumnCount(4)
-        self.stats_table.setHorizontalHeaderLabels(["时间", "窗口ID", "状态", "详情"])
-        self.stats_table.horizontalHeader().setStretchLastSection(True)
-        table_layout.addWidget(self.stats_table)
-        
-        table_group.setLayout(table_layout)
-        layout.addWidget(table_group)
-        
-        widget.setLayout(layout)
-        return widget
+        panel.setLayout(layout)
+        return panel
     
-    def browse_proxy_file(self):
-        """浏览代理文件"""
+    def create_right_panel(self):
+        """创建右侧文件管理面板"""
+        panel = QWidget()
+        layout = QVBoxLayout()
+        
+        # 文件列表标题
+        title_label = QLabel("文件管理")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px;")
+        layout.addWidget(title_label)
+        
+        # 文件列表
+        self.file_list = QListWidget()
+        self.file_list.setAlternatingRowColors(True)
+        self.file_list.setStyleSheet("""
+            QListWidget {
+                border: 2px solid #ddd;
+                border-radius: 5px;
+                background-color: white;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #eee;
+            }
+            QListWidget::item:alternate {
+                background-color: #f9f9f9;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+                color: white;
+            }
+        """)
+        
+        # 添加示例文件
+        self.add_sample_files()
+        
+        layout.addWidget(self.file_list)
+        
+        # 文件操作按钮
+        file_btn_layout = QHBoxLayout()
+        
+        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn.clicked.connect(self.refresh_file_list)
+        file_btn_layout.addWidget(self.refresh_btn)
+        
+        self.add_file_btn = QPushButton("添加文件")
+        self.add_file_btn.clicked.connect(self.add_file)
+        file_btn_layout.addWidget(self.add_file_btn)
+        
+        layout.addLayout(file_btn_layout)
+        
+        panel.setLayout(layout)
+        return panel
+    
+    def add_sample_files(self):
+        """添加示例文件到列表"""
+        sample_files = [
+            "ip5.txt",
+            "popUrl.txt", 
+            "POP网站设置.docx",
+            "ref.txt",
+            "Windows 谷歌UA.txt",
+            "安卓UA.txt"
+        ]
+        
+        for file_name in sample_files:
+            item = QListWidgetItem(file_name)
+            if "UA" in file_name:
+                item.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView))
+            elif "ip" in file_name.lower():
+                item.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon))
+            else:
+                item.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogContentsView))
+            self.file_list.addItem(item)
+    
+    def browse_page_url(self):
+        """浏览页面URL文件"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择代理文件", "", "文本文件 (*.txt);;所有文件 (*)"
+            self, "选择页面URL文件", "", "文本文件 (*.txt);;所有文件 (*)"
         )
         if file_path:
-            self.proxy_path_edit.setText(file_path)
-            count = self.browser_manager.load_proxies(file_path)
-            self.proxy_count_label.setText(str(count))
-            self.log_message(f"已加载 {count} 个代理")
+            self.page_url_edit.setText(file_path)
+            self.load_urls_from_file(file_path)
     
-    def browse_ua_file(self):
-        """浏览UA文件"""
+    def browse_traffic_source(self):
+        """浏览流量来源文件"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择UA文件", "", "文本文件 (*.txt);;所有文件 (*)"
+            self, "选择流量来源文件", "", "文本文件 (*.txt);;所有文件 (*)"
         )
         if file_path:
-            self.ua_path_edit.setText(file_path)
-            count = self.browser_manager.load_user_agents(file_path)
-            self.ua_count_label.setText(str(count))
-            self.log_message(f"已加载 {count} 个用户代理")
+            self.traffic_source_edit.setText(file_path)
+            self.load_traffic_sources_from_file(file_path)
+    
+    def load_urls_from_file(self, file_path):
+        """从文件加载URL列表"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                urls = [line.strip() for line in f if line.strip()]
+            if urls:
+                self.page_url_edit.setText(urls[0])  # 使用第一个URL
+                self.log_message(f"已从文件加载 {len(urls)} 个URL")
+        except Exception as e:
+            QMessageBox.warning(self, "警告", f"加载URL文件失败: {e}")
+    
+    def load_traffic_sources_from_file(self, file_path):
+        """从文件加载流量来源"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                sources = [line.strip() for line in f if line.strip()]
+            if sources:
+                self.traffic_source_edit.setText(sources[0])  # 使用第一个来源
+                self.log_message(f"已从文件加载 {len(sources)} 个流量来源")
+        except Exception as e:
+            QMessageBox.warning(self, "警告", f"加载流量来源文件失败: {e}")
+    
+    def refresh_file_list(self):
+        """刷新文件列表"""
+        self.file_list.clear()
+        self.add_sample_files()
+        self.log_message("文件列表已刷新")
+    
+    def add_file(self):
+        """添加文件到列表"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择文件", "", "所有文件 (*)"
+        )
+        if file_path:
+            file_name = os.path.basename(file_path)
+            item = QListWidgetItem(file_name)
+            item.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogContentsView))
+            self.file_list.addItem(item)
+            self.log_message(f"已添加文件: {file_name}")
     
     def start_clicking(self):
         """开始点击任务"""
-        if not self.target_url_edit.text().strip():
+        if not self.page_url_edit.text().strip():
             QMessageBox.warning(self, "警告", "请输入目标网站URL")
             return
         
+        # 获取任务类型
+        task_type = "Advertising Alliance"
+        for button in self.task_type_group.buttons():
+            if button.isChecked():
+                task_type = button.text()
+                break
+        
+        # 获取广告平台
+        ad_platform = "PopCash"
+        for button in self.platform_group.buttons():
+            if button.isChecked():
+                ad_platform = button.text()
+                break
+        
+        # 获取其他参数
+        target_url = self.page_url_edit.text().strip()
+        source_site = self.traffic_source_edit.text().strip()
+        window_count = self.window_count_spin.value()
+        undertake_platform = self.undertake_combo.currentText()
+        is_real_person = self.real_person_combo.currentText() == "Yes"
+        
+        # 检查代理和UA文件
         if not self.browser_manager.proxy_list:
             QMessageBox.warning(self, "警告", "请先加载代理文件")
             return
@@ -595,210 +632,78 @@ class MainWindow(QMainWindow):
         
         # 创建并启动工作线程
         self.click_worker = ClickWorker(
-            self.target_url_edit.text().strip(),
+            target_url,
             self.browser_manager.proxy_list,
             self.browser_manager.user_agents,
-            self.window_count_spin.value()
+            window_count,
+            task_type,
+            ad_platform,
+            source_site,
+            3,  # 默认点击间隔
+            is_real_person,
+            undertake_platform
         )
         
         # 连接信号
-        self.click_worker.progress_updated.connect(self.update_progress)
         self.click_worker.log_updated.connect(self.log_message)
         self.click_worker.success_count_updated.connect(self.update_success_count)
         self.click_worker.failure_count_updated.connect(self.update_failure_count)
+        self.click_worker.stats_updated.connect(self.update_stats)
         
         # 启动线程
         self.click_worker.start()
         
         # 更新UI状态
-        self.start_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
-        self.status_label.setText("运行中")
-        self.status_label.setStyleSheet("color: green; font-weight: bold;")
+        self.run_btn.setEnabled(False)
+        self.run_btn.setText("运行中...")
+        self.run_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff9800;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 15px;
+                border-radius: 8px;
+            }
+        """)
         
         self.log_message("开始执行点击任务")
-    
-    def stop_clicking(self):
-        """停止点击任务"""
-        if self.click_worker:
-            self.click_worker.stop()
-            self.click_worker.wait()
-            self.click_worker = None
-        
-        # 更新UI状态
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
-        self.status_label.setText("已停止")
-        self.status_label.setStyleSheet("color: red; font-weight: bold;")
-        
-        self.log_message("点击任务已停止")
-    
-    def update_progress(self, value):
-        """更新进度"""
-        pass  # 可以在这里添加进度条更新逻辑
     
     def log_message(self, message):
         """添加日志消息"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] {message}"
-        self.log_text.append(log_entry)
         
-        # 自动滚动到底部
-        cursor = self.log_text.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        self.log_text.setTextCursor(cursor)
+        # 这里可以添加日志显示逻辑
+        print(log_entry)
     
     def update_success_count(self, count):
         """更新成功次数"""
-        self.success_clicks_label.setText(str(count))
-        self.update_success_rate()
+        self.log_message(f"成功点击次数: {count}")
     
     def update_failure_count(self, count):
         """更新失败次数"""
-        self.failure_clicks_label.setText(str(count))
-        self.update_success_rate()
+        self.log_message(f"失败点击次数: {count}")
     
-    def update_success_rate(self):
-        """更新成功率"""
-        success = int(self.success_clicks_label.text())
-        failure = int(self.failure_clicks_label.text())
-        total = success + failure
-        
-        if total > 0:
-            rate = (success / total) * 100
-            self.success_rate_label.setText(f"{rate:.1f}%")
-            self.success_progress.setValue(int(rate))
-        else:
-            self.success_rate_label.setText("0%")
-            self.success_progress.setValue(0)
-        
-        self.total_clicks_label.setText(str(total))
-    
-    def clear_logs(self):
-        """清空日志"""
-        self.log_text.clear()
-        self.log_message("日志已清空")
-    
-    def export_log(self):
-        """导出日志"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "导出日志", f"click_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt", 
-            "文本文件 (*.txt)"
-        )
-        if file_path:
-            try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(self.log_text.toPlainText())
-                QMessageBox.information(self, "成功", f"日志已导出到: {file_path}")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"导出失败: {e}")
-    
-    def load_config(self):
-        """加载配置"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "加载配置", "", "JSON文件 (*.json);;所有文件 (*)"
-        )
-        if file_path:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                
-                # 应用配置
-                self.target_url_edit.setText(config.get('target_url', ''))
-                self.source_site_edit.setText(config.get('source_site', ''))
-                self.window_count_spin.setValue(config.get('window_count', 5))
-                self.click_interval_spin.setValue(config.get('click_interval', 3))
-                self.proxy_path_edit.setText(config.get('proxy_path', ''))
-                self.ua_path_edit.setText(config.get('ua_path', ''))
-                
-                QMessageBox.information(self, "成功", "配置加载成功")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"加载配置失败: {e}")
-    
-    def save_config(self):
-        """保存配置"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "保存配置", f"click_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", 
-            "JSON文件 (*.json)"
-        )
-        if file_path:
-            try:
-                config = {
-                    'target_url': self.target_url_edit.text(),
-                    'source_site': self.source_site_edit.text(),
-                    'window_count': self.window_count_spin.value(),
-                    'click_interval': self.click_interval_spin.value(),
-                    'proxy_path': self.proxy_path_edit.text(),
-                    'ua_path': self.ua_path_edit.text(),
-                    'headless': self.headless_checkbox.isChecked(),
-                    'auto_rotate': self.auto_rotate_checkbox.isChecked(),
-                    'random_delay': self.random_delay_checkbox.isChecked()
-                }
-                
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=2, ensure_ascii=False)
-                
-                QMessageBox.information(self, "成功", f"配置已保存到: {file_path}")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"保存配置失败: {e}")
-    
-    def reset_config(self):
-        """重置配置"""
-        reply = QMessageBox.question(
-            self, "确认", "确定要重置所有配置吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            self.target_url_edit.clear()
-            self.source_site_edit.clear()
-            self.window_count_spin.setValue(5)
-            self.click_interval_spin.setValue(3)
-            self.proxy_path_edit.clear()
-            self.ua_path_edit.clear()
-            self.headless_checkbox.setChecked(False)
-            self.auto_rotate_checkbox.setChecked(True)
-            self.random_delay_checkbox.setChecked(True)
-            
-            self.proxy_count_label.setText("0")
-            self.ua_count_label.setText("0")
-            
-            QMessageBox.information(self, "成功", "配置已重置")
+    def update_stats(self, stats):
+        """更新统计信息"""
+        self.log_message(f"统计更新: {stats['window_id']} - {stats['status']}")
     
     def update_system_info(self):
         """更新系统信息"""
         try:
             # CPU使用率
             cpu_percent = psutil.cpu_percent(interval=1)
-            self.cpu_label.setText(f"{cpu_percent:.1f}%")
             
             # 内存使用率
             memory = psutil.virtual_memory()
             memory_percent = memory.percent
-            self.memory_label.setText(f"{memory_percent:.1f}%")
             
-            # 网络连接数
-            connections = len(psutil.net_connections())
-            self.network_label.setText(str(connections))
+            # 更新状态栏
+            self.statusBar().showMessage(f"CPU: {cpu_percent:.1f}% | 内存: {memory_percent:.1f}% | 程序运行中")
             
         except Exception as e:
             pass
-    
-    def closeEvent(self, event):
-        """关闭事件"""
-        if self.click_worker and self.click_worker.is_running:
-            reply = QMessageBox.question(
-                self, "确认", "任务正在运行中，确定要退出吗？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                self.stop_clicking()
-                event.accept()
-            else:
-                event.ignore()
-        else:
-            event.accept()
 
 def main():
     """主函数"""
@@ -806,8 +711,11 @@ def main():
     
     # 设置应用程序信息
     app.setApplicationName("动态IP轮换点击脚本")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("2.0.0")
     app.setOrganizationName("ClickScript")
+    
+    # 设置应用程序样式
+    app.setStyle('Fusion')
     
     # 创建主窗口
     window = MainWindow()
